@@ -1,0 +1,5 @@
+node_modules/
+build/
+*.log
+.context-index/
+.claude/settings.local.json

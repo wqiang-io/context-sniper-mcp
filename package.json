@@ -1,0 +1,40 @@
+{
+  "name": "context-sniper-mcp",
+  "version": "0.1.0",
+  "description": "Lightweight local MCP server that indexes a repo and returns compact code evidence packets instead of dumping whole files, to save tokens for Claude Code / Codex.",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "context-sniper-mcp": "build/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node build/index.js",
+    "dev": "tsc -p tsconfig.json --watch",
+    "pretest": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.mjs"
+  },
+  "files": [
+    "build"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "codex",
+    "context",
+    "search"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
