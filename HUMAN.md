@@ -133,6 +133,28 @@ npm test          # 通过 Node.js 测试运行器运行所有测试
 - `test/` - 测试文件（`.test.mjs`）
 - `.context-index/` - 生成的索引文件（已 gitignore）
 
-## 许可证
+## 在 CLAUDE.md / AGENTS.md 中使用
+
+在项目的 `CLAUDE.md` 或 `AGENTS.md` 中加入以下内容，让 AI Agent 自动使用 Context Sniper：
+
+```markdown
+## Context Sniper
+
+本项目已配置 context-sniper-mcp。在探索或调试代码库时，优先使用它的工具而非默认的 Read/Grep，可节省 85%+ 的 token。
+
+**工具：**
+- `index_repo(root)` — 首次使用前调用一次，代码大改后重新调用
+- `search_code(root, query)` — 用关键词或自然语言搜索，返回相关代码片段
+- `read_snippet(root, path, startLine, endLine)` — 搜索结果不够时，精确读取指定行范围（上限 300 行）
+- `run_test_filtered(root, command)` — 运行测试，仅返回失败相关输出（command: `npm_test` / `pnpm_test` / `pytest`）
+
+**工作流：**
+1. 先 `index_repo`（如果 `.context-index/` 已存在则跳过）
+2. 需要找代码时用 `search_code`，不要直接 Read 整个文件
+3. 搜索结果不够精确时，用 `read_snippet` 补充上下文
+4. 改完代码后用 `run_test_filtered` 验证
+```
+
+## 协议
 
 MIT
