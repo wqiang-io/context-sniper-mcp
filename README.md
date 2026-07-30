@@ -37,6 +37,8 @@ No database — the index is a single JSON file written to
 There is intentionally no `run_shell` or equivalent — only the four tools
 above are exposed.
 
+## Installation
+
 For installation and client configuration, see [INSTALL.md](./INSTALL.md).
 
 ## Recommended usage
@@ -66,5 +68,7 @@ context-sniper-mcp/
 │   ├── snippets.ts       # bounded, path-safe line-range reads
 │   └── output-gate.ts    # allowlisted test runner + output filtering
 ├── build/                # compiled output (npm run build)
+├── INSTALL.md
+├── HUMAN.md
 └── README.md
 ```
