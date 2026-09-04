@@ -72,3 +72,7 @@ context-sniper-mcp/
 ├── HUMAN.md
 └── README.md
 ```
+
+## License
+
+MIT
