@@ -3,7 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-import { indexRepo, loadIndex, PathEscapeError } from "./repo-index.js";
+import { indexRepo, loadIndex, formatIndexResult, PathEscapeError } from "./repo-index.js";
 import { searchChunks, formatEvidencePacket } from "./search.js";
 import { readSnippet, formatSnippetResult } from "./snippets.js";
 import { runTestFiltered, formatRunResult, type TestCommand } from "./output-gate.js";
@@ -47,9 +47,7 @@ server.registerTool(
   async ({ root }) => {
     try {
       const result = await indexRepo(root);
-      return textResult(
-        `Indexed ${result.fileCount} files into ${result.chunkCount} chunks.\nIndex written to: ${result.indexPath}`,
-      );
+      return textResult(formatIndexResult(result));
     } catch (err) {
       return errorResult(err);
     }
@@ -141,10 +139,18 @@ async function main(): Promise<void> {
   log("context-sniper-mcp running on stdio");
 }
 
-main().catch((err) => {
-  log("fatal error during startup:", err instanceof Error ? err.stack ?? err.message : err);
-  process.exit(1);
-});
+const CLI_SUBCOMMANDS = new Set(["index", "search", "read", "test", "help", "--help", "-h", "--version", "-v"]);
+
+if (CLI_SUBCOMMANDS.has(process.argv[2])) {
+  const { runCli } = await import("./cli.js");
+  const code = await runCli(process.argv.slice(2));
+  process.exit(code);
+} else {
+  main().catch((err) => {
+    log("fatal error during startup:", err instanceof Error ? err.stack ?? err.message : err);
+    process.exit(1);
+  });
+}
 
 process.on("uncaughtException", (err) => {
   log("uncaughtException:", err instanceof Error ? err.stack ?? err.message : err);

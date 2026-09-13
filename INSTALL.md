@@ -18,6 +18,24 @@ node build/index.js
 The server speaks MCP over stdio. It never writes anything to stdout except
 protocol messages — all logs go to stderr — so it's safe to pipe.
 
+## Use it as a CLI
+
+The same entry point doubles as a plain command-line tool — passing a known
+subcommand (`index`, `search`, `read`, `test`, `help`) runs that command once
+and exits, instead of starting the MCP server:
+
+```bash
+node build/index.js index .
+node build/index.js search . "some query" --top-k 3
+node build/index.js read . src/index.ts 1 40
+node build/index.js test . npm_test
+```
+
+This also works through the `context-sniper-mcp` bin name once installed
+(`npm link`, a global install, or the shared launcher below), and through the
+launcher script since it forwards `"$@"`. See [README.md](./README.md#cli-usage)
+for the full subcommand reference.
+
 ## Add to Claude Code
 
 ```bash

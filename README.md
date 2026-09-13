@@ -41,6 +41,26 @@ above are exposed.
 
 For installation and client configuration, see [INSTALL.md](./INSTALL.md).
 
+## CLI usage
+
+The same binary also works as a plain shell command — pass a subcommand and it
+runs once and exits, instead of starting the MCP stdio server:
+
+```bash
+context-sniper-mcp index <root>
+context-sniper-mcp search <root> <query...> [--top-k N]
+context-sniper-mcp read <root> <path> <startLine> <endLine>
+context-sniper-mcp test <root> <npm_test|pnpm_test|pytest> [--timeout ms]
+context-sniper-mcp help
+context-sniper-mcp --version
+```
+
+Each subcommand maps 1:1 to the tool of the same purpose above and prints the
+same human-readable output. `test` exits with the underlying test command's
+own exit code (or `124` on timeout), so it's usable in scripts, e.g.
+`context-sniper-mcp test . npm_test || echo "tests failed"`. Running the
+binary with no arguments still starts the MCP stdio server.
+
 ## Recommended usage
 
 1. Call **index_repo** once per repo (and again after large changes) before
@@ -62,11 +82,12 @@ context-sniper-mcp/
 ├── package.json
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts        # MCP server wiring + tool registration
-│   ├── repo-index.ts    # scanning, chunking, safe path resolution, index I/O
-│   ├── search.ts         # BM25-style scoring + evidence packet formatting
-│   ├── snippets.ts       # bounded, path-safe line-range reads
-│   └── output-gate.ts    # allowlisted test runner + output filtering
+│   ├── index.ts        # MCP server wiring + tool registration; dispatches to cli.ts
+│   ├── cli.ts          # shell subcommands (index/search/read/test) for direct CLI use
+│   ├── repo-index.ts   # scanning, chunking, safe path resolution, index I/O
+│   ├── search.ts       # BM25-style scoring + evidence packet formatting
+│   ├── snippets.ts     # bounded, path-safe line-range reads
+│   └── output-gate.ts  # allowlisted test runner + output filtering
 ├── build/                # compiled output (npm run build)
 ├── INSTALL.md
 ├── HUMAN.md

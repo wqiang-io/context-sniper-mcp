@@ -296,6 +296,10 @@ export async function indexRepo(root: string): Promise<IndexResult> {
   };
 }
 
+export function formatIndexResult(result: IndexResult): string {
+  return `Indexed ${result.fileCount} files into ${result.chunkCount} chunks.\nIndex written to: ${result.indexPath}`;
+}
+
 // Process-lifetime cache so repeated search_code calls don't re-read and
 // re-parse the index. Keyed by resolved index path, invalidated by mtime.
 const indexCache = new Map<string, { mtimeMs: number; index: SearchIndex }>();
