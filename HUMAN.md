@@ -42,7 +42,8 @@
 ### 文件结构
 ```
 src/
-├── index.ts          # MCP 服务器设置 + 工具注册
+├── index.ts          # MCP 服务器设置 + 工具注册；根据启动参数分发到 cli.ts
+├── cli.ts            # 命令行子命令（index/search/read/test），供终端直接调用
 ├── repo-index.ts     # 仓库扫描、分块、索引 I/O
 ├── search.ts         # BM25 评分 + 证据包格式化
 ├── snippets.ts       # 有界行范围读取与路径验证
@@ -73,6 +74,21 @@ src/
 - 不可能执行任意命令
 
 安装和客户端配置请参阅 [INSTALL.md](./INSTALL.md)。
+
+## 命令行（CLI）用法
+
+同一个可执行文件也可以直接在 shell 里当命令行工具用 —— 传入子命令就会执行一次并退出，而不是启动 MCP stdio 服务：
+
+```bash
+context-sniper-mcp index <root>
+context-sniper-mcp search <root> <query...> [--top-k N]
+context-sniper-mcp read <root> <path> <startLine> <endLine>
+context-sniper-mcp test <root> <npm_test|pnpm_test|pytest> [--timeout ms]
+context-sniper-mcp help
+context-sniper-mcp --version
+```
+
+`test` 子命令会透传被测命令自身的退出码（超时则返回 124），方便在脚本 / CI 里判断成败。不带任何参数运行时行为不变，仍然启动 MCP stdio 服务器——`src/index.ts` 只是在启动时检查第一个参数是否命中已知子命令，命中才转发给 `src/cli.ts`，否则原样走 MCP 逻辑，不影响现有的 MCP 客户端接入方式。
 
 ## 使用工作流程
 

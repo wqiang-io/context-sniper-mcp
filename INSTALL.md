@@ -21,8 +21,8 @@ protocol messages — all logs go to stderr — so it's safe to pipe.
 ## Use it as a CLI
 
 The same entry point doubles as a plain command-line tool — passing a known
-subcommand (`index`, `search`, `read`, `test`, `help`) runs that command once
-and exits, instead of starting the MCP server:
+subcommand (`index`, `search`, `read`, `test`, `help`) or flag (`--version`)
+runs it once and exits, instead of starting the MCP server:
 
 ```bash
 node build/index.js index .
