@@ -73,7 +73,7 @@ src/
 - 测试运行器使用 `shell: false` 和固定命令白名单
 - 不可能执行任意命令
 
-安装和客户端配置请参阅 [INSTALL.md](./INSTALL.md)。
+安装和客户端配置请参阅 [INSTALL.zh-CN.md](./INSTALL.zh-CN.md)（含 Claude Code、Codex、DeepSeek Harness）。
 
 ## 命令行（CLI）用法
 

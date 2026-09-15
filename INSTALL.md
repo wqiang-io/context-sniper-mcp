@@ -1,5 +1,7 @@
 # Install & configure context-sniper-mcp
 
+English | [简体中文](./INSTALL.zh-CN.md)
+
 ## Install & build
 
 ```bash
@@ -57,10 +59,40 @@ startup_timeout_sec = 20
 tool_timeout_sec = 120
 ```
 
+## Add to DeepSeek Harness
+
+[DeepSeek Harness](https://www.deepseek.com/harness/en/) (`dsh`) registers MCP
+servers through its Cordis plugin system, via the `@deepseek-ai/dsh-mcp-client`
+plugin, configured in a YAML patch file. Add an entry to
+`$DSH_HOME/cordis.patch.yml` (create it if it doesn't exist yet):
+
+```yaml
+- id: context-sniper
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: context-sniper
+    transport: stdio
+    command: node
+    args: ['/ABS/PATH/context-sniper-mcp/build/index.js']
+```
+
+Replace `/ABS/PATH` with the absolute path to this project. Tools then show up
+as `mcp__context-sniper__index_repo`, `mcp__context-sniper__search_code`, etc.
+
+To test a patch without persisting it first, pass it directly on the command
+line instead:
+
+```bash
+dsh web --patch "/ABS/PATH/to/your/patch.cordis.yml"
+```
+
+See the [mcp-client README](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/mcp/mcp-client/README.md)
+for the full set of options (`cwd`, `toolCallTimeoutMs`, `failOnStartupError`, etc.).
+
 ### Shared launcher (recommended)
 
 Instead of hardcoding the absolute build path in every client config, install
-a one-line launcher script on `PATH` and point both clients at the bare
+a one-line launcher script on `PATH` and point each client at the bare
 command name:
 
 ```bash
@@ -93,6 +125,18 @@ claude mcp add --scope user --transport stdio context-sniper -- context-sniper-m
 command = "context-sniper-mcp"
 startup_timeout_sec = 20
 tool_timeout_sec = 120
+```
+
+**DeepSeek Harness** (`$DSH_HOME/cordis.patch.yml`):
+
+```yaml
+- id: context-sniper
+  name: '@deepseek-ai/dsh-mcp-client'
+  config:
+    serverName: context-sniper
+    transport: stdio
+    command: context-sniper-mcp
+    args: []
 ```
 
 Rebuilding the project (`npm run build`) is picked up automatically — the
