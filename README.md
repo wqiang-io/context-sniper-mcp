@@ -87,9 +87,12 @@ context-sniper-mcp/
 │   ├── repo-index.ts   # scanning, chunking, safe path resolution, index I/O
 │   ├── search.ts       # BM25-style scoring + evidence packet formatting
 │   ├── snippets.ts     # bounded, path-safe line-range reads
-│   └── output-gate.ts  # allowlisted test runner + output filtering
+│   ├── output-gate.ts  # allowlisted test runner + output filtering
+│   └── tokenize.ts     # shared tokenizer used by indexing + search
+├── test/                 # *.test.mjs unit tests for each src module
 ├── build/                # compiled output (npm run build)
 ├── INSTALL.md
+├── INSTALL.zh-CN.md
 ├── HUMAN.md
 └── README.md
 ```
