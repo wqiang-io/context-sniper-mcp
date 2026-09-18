@@ -56,6 +56,34 @@ test("search after indexing returns an evidence packet", async () => {
   assert.match(stdout.join("\n"), /FILE: hello\.js/);
 });
 
+test("search --max-chars caps the packet and points at the rest", async () => {
+  const root = await makeFixtureRepo();
+  const lines = Array.from({ length: 100 }, (_, i) => `hello world ${i + 1} ${"x".repeat(40)}`);
+  await fs.writeFile(join(root, "wide.js"), lines.join("\n") + "\n", "utf8");
+  await runCli(["index", root], collectingIo().io);
+
+  const { io, stdout } = collectingIo();
+  const code = await runCli(["search", root, "hello", "world", "--max-chars", "800"], io);
+  assert.equal(code, 0);
+  const packet = stdout.join("\n");
+  assert.ok(packet.length <= 800, `${packet.length} > 800`);
+  assert.match(packet, /FILE: wide\.js/);
+  assert.match(packet, /budget: \d+ chars omitted; use read_snippet wide\.js 1 \d+ to expand/);
+});
+
+test("search --max-chars rejects non-positive and non-numeric values", async () => {
+  const root = await makeFixtureRepo();
+  await runCli(["index", root], collectingIo().io);
+
+  for (const bad of ["0", "abc", "12.5", "--max-chars=-5"]) {
+    const { io, stderr } = collectingIo();
+    const args = bad.startsWith("--") ? [bad] : ["--max-chars", bad];
+    const code = await runCli(["search", root, "hello", ...args], io);
+    assert.equal(code, 2, `--max-chars ${bad} should be a usage error`);
+    assert.match(stderr.join("\n"), /--max-chars must be a positive integer/);
+  }
+});
+
 test("read returns a snippet for a valid range", async () => {
   const root = await makeFixtureRepo();
   const { io, stdout } = collectingIo();

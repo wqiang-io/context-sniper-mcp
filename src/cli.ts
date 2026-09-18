@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { indexRepo, loadIndex, formatIndexResult, PathEscapeError } from "./repo-index.js";
-import { searchChunks, formatEvidencePacket } from "./search.js";
+import { searchChunks, formatEvidencePacket, DEFAULT_MAX_CHARS } from "./search.js";
 import { readSnippet, formatSnippetResult } from "./snippets.js";
 import { runTestFiltered, formatRunResult, type TestCommand } from "./output-gate.js";
 
@@ -32,7 +32,7 @@ const USAGE = `context-sniper-mcp <command> [args]
 
 Commands:
   index <root>                                 Build a chunk index for a repo
-  search <root> <query...> [--top-k N]          Search the index (default top-k 5)
+  search <root> <query...> [--top-k N] [--max-chars N]   Search the index (default top-k 5, max-chars ${DEFAULT_MAX_CHARS})
   read <root> <path> <startLine> <endLine>      Read a line range from a file (capped at 300 lines)
   test <root> <npm_test|pnpm_test|pytest> [--timeout ms]   Run an allowlisted test command
   help [command]                                Show this help (or help for one command)
@@ -42,7 +42,7 @@ Run with no arguments to start the MCP stdio server instead.`;
 
 const SUBCOMMAND_USAGE: Record<string, string> = {
   index: "Usage: context-sniper-mcp index <root>",
-  search: "Usage: context-sniper-mcp search <root> <query...> [--top-k N]",
+  search: "Usage: context-sniper-mcp search <root> <query...> [--top-k N] [--max-chars N]",
   read: "Usage: context-sniper-mcp read <root> <path> <startLine> <endLine>",
   test: "Usage: context-sniper-mcp test <root> <npm_test|pnpm_test|pytest> [--timeout ms]",
 };
@@ -67,7 +67,7 @@ async function cmdIndex(args: string[], io: CliIo): Promise<number> {
 async function cmdSearch(args: string[], io: CliIo): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
-    options: { "top-k": { type: "string", short: "k" } },
+    options: { "top-k": { type: "string", short: "k" }, "max-chars": { type: "string" } },
     allowPositionals: true,
   });
 
@@ -81,6 +81,11 @@ async function cmdSearch(args: string[], io: CliIo): Promise<number> {
     if (topK > 50) throw new UsageError("--top-k must be at most 50");
   }
 
+  let maxChars = DEFAULT_MAX_CHARS;
+  if (values["max-chars"] !== undefined) {
+    maxChars = parsePositiveInt(values["max-chars"], "--max-chars");
+  }
+
   const index = await loadIndex(root);
   if (!index) {
     io.stderr(`No index found for this root. Run "context-sniper-mcp index ${root}" first.`);
@@ -88,7 +93,7 @@ async function cmdSearch(args: string[], io: CliIo): Promise<number> {
   }
 
   const hits = searchChunks(index, query, topK);
-  io.stdout(formatEvidencePacket(hits));
+  io.stdout(formatEvidencePacket(hits, maxChars));
   return 0;
 }
 

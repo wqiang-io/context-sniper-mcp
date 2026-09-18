@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { indexRepo, loadIndex, formatIndexResult, PathEscapeError } from "./repo-index.js";
-import { searchChunks, formatEvidencePacket } from "./search.js";
+import { searchChunks, formatEvidencePacket, DEFAULT_MAX_CHARS } from "./search.js";
 import { readSnippet, formatSnippetResult } from "./snippets.js";
 import { runTestFiltered, formatRunResult, type TestCommand } from "./output-gate.js";
 
@@ -60,14 +60,20 @@ server.registerTool(
     title: "Search code",
     description:
       "Search the previously built chunk index with a BM25-style keyword score and return a compact evidence " +
-      "packet (FILE / LINES / SCORE + snippet) instead of full files. Call index_repo first if no index exists.",
+      "packet (FILE / LINES / SCORE + snippet) instead of full files. Each hit is trimmed to the lines containing " +
+      "query tokens plus 2 lines of context, overlapping hits from the same file are merged, and the whole packet " +
+      "is capped at maxChars; hits that do not fit are listed so they can be fetched with read_snippet. " +
+      "Call index_repo first if no index exists.",
     inputSchema: {
       root: z.string().describe("Absolute path to the repository root"),
       query: z.string().describe("Natural language or keyword query"),
-      topK: z.number().int().positive().max(50).optional().describe("Number of results to return (default 5)"),
+      topK: z.number().int().positive().max(50).optional()
+        .describe("Max candidate chunks to consider (default 5); fewer hits can come back after trimming and merging"),
+      maxChars: z.number().int().positive().optional()
+        .describe(`Total character budget for the whole evidence packet (default ${DEFAULT_MAX_CHARS}); hits are added in score order and the rest are listed as omitted`),
     },
   },
-  async ({ root, query, topK }) => {
+  async ({ root, query, topK, maxChars }) => {
     try {
       const index = await loadIndex(root);
       if (!index) {
@@ -77,7 +83,7 @@ server.registerTool(
         );
       }
       const hits = searchChunks(index, query, topK ?? 5);
-      return textResult(formatEvidencePacket(hits));
+      return textResult(formatEvidencePacket(hits, maxChars ?? DEFAULT_MAX_CHARS));
     } catch (err) {
       return errorResult(err);
     }
