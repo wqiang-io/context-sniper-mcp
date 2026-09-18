@@ -180,18 +180,22 @@ context-sniper-mcp --version
 ## Token 效率
 
 2026-09-19 实测；token 按字符数 ÷ 4 粗估。"旧版"指此前整块返回的
-`search_code`，"新版"为当前默认参数（`topK` 5，`maxChars` 6000）。
+`search_code`，"新版"为当前默认参数（`topK` 5，`maxChars` 6000）。"普通 `Read`"
+是对照组：用 Claude Code 的 `Read` 工具整个打开能回答该查询的文件，按其
+`cat -n` 输出格式计数（6 位宽行号、制表符、行内容）。
 
-| 查询 | 语料 | 旧版 | 新版 |
-|------|------|------|------|
-| `timeout kill process group` | 本仓库（13 文件） | 14,279 字符 ≈ 3.6k token | 2,907 字符 ≈ 0.7k token |
-| `index`，`topK` 50 | 本仓库 | 53,010 字符 ≈ 13k token | 5,992 字符 ≈ 1.5k token（预算封顶） |
-| `__table_name__` | 一个 React + FastAPI 项目（69 文件） | 8,697 字符 | 914 字符 |
-| `zustand persist sidebar` | 同上 | 14,637 字符 | 2,912 字符 |
+| 查询 | 语料 | 旧版 | 新版 | 普通 `Read` 整个答案文件 |
+|------|------|------|------|--------------------------|
+| `timeout kill process group` | 本仓库（13 文件） | 14,279 字符 ≈ 3.6k token | 2,907 字符 ≈ 0.7k token | `src/output-gate.ts`，140 行：5,024 字符 ≈ 1.3k token |
+| `index`，`topK` 50 | 本仓库 | 53,010 字符 ≈ 13k token | 5,992 字符 ≈ 1.5k token（预算封顶） | `src/repo-index.ts`，360 行：13,537 字符 ≈ 3.4k token |
+| `__table_name__` | 一个 React + FastAPI 项目（69 文件） | 8,697 字符 | 914 字符 | `backend/app/models/db_models.py`，13 行：539 字符 |
+| `zustand persist sidebar` | 同上 | 14,637 字符 | 2,912 字符 | `frontend/src/stores/useUIStore.ts`，35 行：975 字符 |
 
-作为参照：`grep -rn SIGKILL src/` 是 207 字符，直接 `Read` 一个 120 行的文件约
-4,000 到 5,000 字符。一次搜索回复不会超过 `maxChars`，被裁掉的部分都能用标记里
-给出的 `read_snippet` 参数取回。
+`Read` 这一列的前提是你已经知道该打开哪个文件；对那两个很小的项目文件，知道文件后
+直接 `Read` 比搜索回复更省。搜索回复多花的部分买的是"找到文件"，同时也带上了相关
+命中：两个项目查询都会命中 `REVIEW.md`，它有 319 行，整个 `Read` 要 23,261 字符
+（≈ 5.8k token）。作为参照，`grep -rn SIGKILL src/` 是 207 字符。一次搜索回复
+不会超过 `maxChars`，被裁掉的部分都能用标记里给出的 `read_snippet` 参数取回。
 
 ## 设计说明
 
