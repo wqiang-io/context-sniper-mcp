@@ -1,5 +1,7 @@
 # context-sniper-mcp
 
+English | [简体中文](./README.zh-CN.md)
+
 A tiny local MCP server that indexes a repository into line-range chunks and
 serves compact "evidence packets" (file + lines + score + snippet) instead of
 dumping whole files into the model's context. Meant to be shared by
@@ -121,7 +123,7 @@ described above, and the remaining hits are listed at the end so they can
 still be fetched:
 
 ```
-... (budget: 3 more hits omitted: src/cli.ts 81-172, HUMAN.md 84-88, README.md 51-62; use read_snippet <path> <start> <end> to expand, or raise maxChars)
+... (budget: 3 more hits omitted: src/cli.ts 81-172, README.zh-CN.md 84-88, README.md 51-62; use read_snippet <path> <start> <end> to expand, or raise maxChars)
 ```
 
 Whenever at least one hit is shown, that trailer names at least one omitted
@@ -170,6 +172,74 @@ binary with no arguments still starts the MCP stdio server.
    300 lines per call) rather than reading the entire file. Raise `maxChars`
    only when the trailer lists several omitted hits you actually need.
 
+## Using it from CLAUDE.md / AGENTS.md
+
+Paste this into the project's `CLAUDE.md` or `AGENTS.md` so the agent reaches
+for Context Sniper before it reaches for `Read`. Every line here is loaded on
+every turn, so it is kept short; the tool descriptions the server ships carry
+the rest.
+
+```markdown
+## Context Sniper
+
+This repo is served by the `context-sniper` MCP server. Use it to locate code
+before opening files: one `search_code` reply is capped at 6000 chars (about
+1.5k tokens) and returns only the matching lines plus 2 lines of context.
+
+Tools (`root` is always this repo's absolute path):
+- `index_repo(root)` — run it if `.context-index/` is missing, and again after
+  `git pull`, large edits, or a change to `.csignore`. If a snippet's line
+  numbers no longer match the file, the index is stale: re-run it.
+- `search_code(root, query, topK?, maxChars?)` — keyword search (BM25), not
+  semantic. Query with identifiers, error strings and distinctive words as they
+  appear in the code; camelCase is one token and single characters are dropped.
+  Start with the defaults. Raise `topK` for broad queries; raise `maxChars` only
+  when the trailer lists omitted hits you actually need.
+- `read_snippet(root, path, startLine, endLine)` — bounded read, 300 lines max.
+  Every omission marker in a search result spells out the exact call: copy it
+  instead of reading the whole file.
+- `run_test_filtered(root, command)` — `npm_test` / `pnpm_test` / `pytest`;
+  returns only the failure-relevant lines.
+
+Workflow:
+1. Locate with `search_code`; expand with `read_snippet` by following the markers.
+2. Read a whole file only when you are about to edit it or it is short. `Grep`
+   is still right for exact strings, regexes, and files added since the last index.
+3. After editing, verify with `run_test_filtered` instead of the raw test runner.
+```
+
+## Token efficiency
+
+Measured on 2026-09-19; tokens are estimated as characters ÷ 4. "Before" is the
+previous `search_code`, which returned whole chunks; "after" is the current
+default (`topK` 5, `maxChars` 6000).
+
+| Query | Corpus | Before | After |
+|-------|--------|--------|-------|
+| `timeout kill process group` | this repo (13 files) | 14,279 chars ≈ 3.6k tokens | 2,907 chars ≈ 0.7k tokens |
+| `index`, `topK` 50 | this repo | 53,010 chars ≈ 13k tokens | 5,992 chars ≈ 1.5k tokens (budget cap) |
+| `__table_name__` | a React + FastAPI project (69 files) | 8,697 chars | 914 chars |
+| `zustand persist sidebar` | same project | 14,637 chars | 2,912 chars |
+
+For scale: `grep -rn SIGKILL src/` is 207 chars, and a plain `Read` of one
+120-line file is roughly 4,000 to 5,000 chars. A search reply never exceeds
+`maxChars`; whatever was cut can be fetched with the `read_snippet` call named
+in the marker.
+
+## Design notes
+
+- **Atomic index writes** — `index_repo` writes to a temp file next to the
+  index and `rename()`s it into place, so a concurrent `search_code` never sees
+  a half-written file. The index carries a format version (currently 2); a
+  file with any other version is treated as missing, and `search_code` asks you
+  to re-run `index_repo`.
+- **Per-process cache** — a loaded index is cached by path and mtime for the
+  life of the server process, so repeated searches don't re-parse the JSON; the
+  cache drops the entry when the file changes.
+- **No arbitrary execution** — `read_snippet` resolves `path` against `root`
+  and refuses anything that escapes it; the test runner spawns with
+  `shell: false` and a fixed allowlist.
+
 ## Project layout
 
 ```
@@ -189,8 +259,8 @@ context-sniper-mcp/
 ├── build/                # compiled output (npm run build)
 ├── INSTALL.md
 ├── INSTALL.zh-CN.md
-├── HUMAN.md
-└── README.md
+├── README.md
+└── README.zh-CN.md
 ```
 
 ## License
