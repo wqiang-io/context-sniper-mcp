@@ -31,7 +31,7 @@ function readPackageVersion(): string {
 const USAGE = `context-sniper-mcp <command> [args]
 
 Commands:
-  index <root>                                 Build a chunk index for a repo
+  index <root>                                 Build a chunk index for a repo (honours <root>/.csignore)
   search <root> <query...> [--top-k N] [--max-chars N]   Search the index (default top-k 5, max-chars ${DEFAULT_MAX_CHARS})
   read <root> <path> <startLine> <endLine>      Read a line range from a file (capped at 300 lines)
   test <root> <npm_test|pnpm_test|pytest> [--timeout ms]   Run an allowlisted test command

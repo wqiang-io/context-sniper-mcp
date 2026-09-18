@@ -39,7 +39,9 @@ server.registerTool(
     title: "Index repo",
     description:
       "Scan a repository and build a lightweight chunk index at <root>/.context-index/chunks.json. " +
-      "Run this once before search_code (and re-run after significant code changes).",
+      "Every text file is indexed except built-in noise (node_modules, lockfiles, .env secrets, media, ...) and " +
+      "anything matched by <root>/.csignore (gitignore syntax). Run this once before search_code, and re-run " +
+      "after significant code changes or after editing .csignore.",
     inputSchema: {
       root: z.string().describe("Absolute path to the repository root"),
     },

@@ -12,6 +12,7 @@ import {
   indexRepo,
   loadIndex,
   getIndexPath,
+  formatIndexResult,
 } from "../build/repo-index.js";
 
 test("resolveSafePath allows paths inside root and rejects escapes", () => {
@@ -63,7 +64,7 @@ test("indexRepo writes a parseable index and loadIndex reads it back", async () 
   await fs.mkdir(path.join(root, "src"));
   await fs.writeFile(path.join(root, "src", "a.ts"), "export const x = 1;\n", "utf8");
   await fs.writeFile(path.join(root, "README.md"), "# hello\n", "utf8");
-  // Ignored: wrong extension and ignored directory.
+  // Ignored: binary content (NUL byte) and a default-ignored directory.
   await fs.writeFile(path.join(root, "notes.bin"), "\0\0\0", "utf8");
   await fs.mkdir(path.join(root, "node_modules"));
   await fs.writeFile(path.join(root, "node_modules", "dep.js"), "module.exports={}\n", "utf8");
@@ -89,7 +90,7 @@ test("indexRepo writes a parseable index and loadIndex reads it back", async () 
 test("indexRepo skips lockfiles, minified bundles, and oversized files (#6)", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "sniper-skip-"));
   await fs.writeFile(path.join(root, "a.ts"), "export const kept = 1;\n", "utf8");
-  // Generated noise that passes the extension allowlist but should be skipped.
+  // Generated noise covered by the built-in ignore rules.
   await fs.writeFile(path.join(root, "package-lock.json"), JSON.stringify({ a: 1 }), "utf8");
   await fs.writeFile(path.join(root, "pnpm-lock.yaml"), "lockfileVersion: 9\n", "utf8");
   await fs.writeFile(path.join(root, "app.min.js"), "var a=1;var b=2;\n", "utf8");
@@ -135,4 +136,54 @@ test("loadIndex returns null for a stale (wrong-version) index", async () => {
   await fs.mkdir(path.dirname(indexPath), { recursive: true });
   await fs.writeFile(indexPath, JSON.stringify({ version: 1, chunks: [] }), "utf8");
   assert.equal(await loadIndex(root), null);
+});
+
+test("indexRepo indexes any text file (scss, html, no extension) but not binaries", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sniper-text-"));
+  await fs.mkdir(path.join(root, "styles"));
+  await fs.writeFile(path.join(root, "styles", "app.scss"), ".a { color: red; }\n", "utf8");
+  await fs.writeFile(path.join(root, "index.html"), "<html><body>hi</body></html>\n", "utf8");
+  await fs.writeFile(path.join(root, "Makefile"), "all:\n\techo hi\n", "utf8");
+  await fs.writeFile(path.join(root, "logo.bin"), Buffer.from([0x89, 0x50, 0x00, 0x47]));
+
+  const result = await indexRepo(root);
+  assert.equal(result.fileCount, 3);
+  assert.equal(result.csignoreRules, null);
+  const paths = new Set((await loadIndex(root)).chunks.map((c) => c.path));
+  assert.deepEqual([...paths].sort(), ["Makefile", "index.html", "styles/app.scss"]);
+  assert.doesNotMatch(formatIndexResult(result), /csignore/);
+});
+
+test("indexRepo keeps secrets and lockfiles out by default but keeps .env.example", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sniper-secret-"));
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, ".env"), "API_KEY=sk-secret123\n", "utf8");
+  await fs.writeFile(path.join(root, ".env.example"), "API_KEY=\n", "utf8");
+  await fs.writeFile(path.join(root, "uv.lock"), "version = 1\n", "utf8");
+  await fs.writeFile(path.join(root, "src", "a.py"), "x = 1\n", "utf8");
+
+  const result = await indexRepo(root);
+  assert.equal(result.fileCount, 2);
+  const index = await loadIndex(root);
+  assert.deepEqual([...new Set(index.chunks.map((c) => c.path))].sort(), [".env.example", "src/a.py"]);
+  assert.ok(index.chunks.every((c) => !c.text.includes("secret123")));
+});
+
+test("indexRepo honours .csignore and reports what it skipped", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "sniper-csi-"));
+  await fs.mkdir(path.join(root, "docs"));
+  await fs.mkdir(path.join(root, "src"));
+  await fs.writeFile(path.join(root, ".csignore"), "# project rules\ndocs/\n*.generated.ts\n", "utf8");
+  await fs.writeFile(path.join(root, "docs", "guide.md"), "# guide\n", "utf8");
+  await fs.writeFile(path.join(root, "src", "a.ts"), "export const a = 1;\n", "utf8");
+  await fs.writeFile(path.join(root, "src", "b.generated.ts"), "export const b = 2;\n", "utf8");
+  await fs.writeFile(path.join(root, "src", "c.ts"), "export const c = 3;\n", "utf8");
+
+  const result = await indexRepo(root);
+  assert.equal(result.fileCount, 2);
+  assert.equal(result.csignoreRules, 2);
+  assert.equal(result.csignoreSkipped, 2, "the docs directory and b.generated.ts");
+  assert.match(formatIndexResult(result), /\.csignore: 2 rules, 2 files\/dirs skipped/);
+  const paths = new Set((await loadIndex(root)).chunks.map((c) => c.path));
+  assert.deepEqual([...paths].sort(), ["src/a.ts", "src/c.ts"]);
 });

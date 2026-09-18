@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { tokenize } from "./tokenize.js";
+import { loadIgnoreMatcher, type IgnoreMatcher } from "./ignore.js";
 
 export interface Chunk {
   path: string;
@@ -42,37 +43,9 @@ interface IndexFile {
   chunks: IndexedChunk[];
 }
 
-const IGNORE_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  "coverage",
-  ".venv",
-  "target",
-  ".context-index",
-]);
-
-const ALLOWED_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".py",
-  ".java",
-  ".go",
-  ".rs",
-  ".md",
-  ".json",
-  ".yml",
-  ".yaml",
-  ".toml",
-]);
-
-// Files whose extension passes the allowlist but whose content is generated
-// noise: dependency lockfiles and minified/bundled output. Matched by basename.
-const IGNORE_FILE_RE = /^(package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml)$|\.min\.[jt]sx?$|\.bundle\.js$/i;
+// Which files get scanned is decided by the gitignore-style rules in
+// ignore.ts (built-in defaults plus <root>/.csignore). Every text file that is
+// not ignored is indexed; there is no extension allowlist.
 
 // Skip individual files above this size — typically generated data blobs or
 // single-line minified files that would bloat the index without being useful
@@ -119,7 +92,21 @@ export function getIndexPath(root: string): string {
   return path.join(resolvedRoot, INDEX_DIR_NAME, INDEX_FILE_NAME);
 }
 
-async function walk(dir: string, root: string, out: string[]): Promise<void> {
+export interface ScanResult {
+  files: string[];
+  /** Rules read from <root>/.csignore, or null when there is no such file. */
+  csignoreRules: number | null;
+  /** Files and directories skipped because a .csignore rule matched them. */
+  csignoreSkipped: number;
+}
+
+async function walk(
+  dir: string,
+  root: string,
+  matcher: IgnoreMatcher,
+  out: string[],
+  stats: { csignoreSkipped: number },
+): Promise<void> {
   let entries;
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
@@ -128,29 +115,33 @@ async function walk(dir: string, root: string, out: string[]): Promise<void> {
   }
 
   for (const entry of entries) {
-    const fullPath = path.join(dir, entry.name);
+    const isDir = entry.isDirectory();
+    if (!isDir && !entry.isFile()) continue;
 
-    if (entry.isDirectory()) {
-      if (IGNORE_DIRS.has(entry.name)) continue;
-      await walk(fullPath, root, out);
+    const fullPath = path.join(dir, entry.name);
+    const relPath = path.relative(root, fullPath).split(path.sep).join("/");
+    const rule = matcher.match(relPath, isDir);
+    if (rule && !rule.negated) {
+      // An ignored directory is pruned here, so nothing below it is visited.
+      if (rule.source === "csignore") stats.csignoreSkipped += 1;
       continue;
     }
 
-    if (!entry.isFile()) continue;
-
-    const ext = path.extname(entry.name).toLowerCase();
-    if (!ALLOWED_EXTENSIONS.has(ext)) continue;
-    if (IGNORE_FILE_RE.test(entry.name)) continue;
-
+    if (isDir) {
+      await walk(fullPath, root, matcher, out, stats);
+      continue;
+    }
     out.push(fullPath);
   }
 }
 
-export async function scanRepo(root: string): Promise<string[]> {
+export async function scanRepo(root: string): Promise<ScanResult> {
   const resolvedRoot = path.resolve(root);
+  const { matcher, csignoreRules } = await loadIgnoreMatcher(resolvedRoot);
   const files: string[] = [];
-  await walk(resolvedRoot, resolvedRoot, files);
-  return files;
+  const stats = { csignoreSkipped: 0 };
+  await walk(resolvedRoot, resolvedRoot, matcher, files, stats);
+  return { files, csignoreRules, csignoreSkipped: stats.csignoreSkipped };
 }
 
 export function chunkText(text: string): Array<{ startLine: number; endLine: number; text: string }> {
@@ -217,6 +208,10 @@ export interface IndexResult {
   fileCount: number;
   chunkCount: number;
   indexPath: string;
+  /** Rules read from <root>/.csignore, or null when there is no such file. */
+  csignoreRules: number | null;
+  /** Files and directories skipped because a .csignore rule matched them. */
+  csignoreSkipped: number;
 }
 
 export async function indexRepo(root: string): Promise<IndexResult> {
@@ -226,11 +221,11 @@ export async function indexRepo(root: string): Promise<IndexResult> {
     throw new Error(`root does not exist or is not a directory: ${resolvedRoot}`);
   }
 
-  const files = await scanRepo(resolvedRoot);
+  const scan = await scanRepo(resolvedRoot);
   const chunks: Chunk[] = [];
   let indexedFileCount = 0;
 
-  for (const filePath of files) {
+  for (const filePath of scan.files) {
     // Skip oversized files (generated blobs, single-line minified output)
     // before reading them into memory.
     const fileStat = await fs.stat(filePath).catch(() => null);
@@ -243,7 +238,7 @@ export async function indexRepo(root: string): Promise<IndexResult> {
       continue;
     }
 
-    // Skip binary-ish files that slipped through the extension filter.
+    // Skip binary files: the ignore rules only see names, not content.
     if (content.includes("\0")) continue;
 
     const relPath = path.relative(resolvedRoot, filePath).split(path.sep).join("/");
@@ -293,11 +288,17 @@ export async function indexRepo(root: string): Promise<IndexResult> {
     fileCount: indexedFileCount,
     chunkCount: chunks.length,
     indexPath,
+    csignoreRules: scan.csignoreRules,
+    csignoreSkipped: scan.csignoreSkipped,
   };
 }
 
 export function formatIndexResult(result: IndexResult): string {
-  return `Indexed ${result.fileCount} files into ${result.chunkCount} chunks.\nIndex written to: ${result.indexPath}`;
+  const csignore =
+    result.csignoreRules === null
+      ? ""
+      : `\n.csignore: ${result.csignoreRules} rules, ${result.csignoreSkipped} files/dirs skipped`;
+  return `Indexed ${result.fileCount} files into ${result.chunkCount} chunks.\nIndex written to: ${result.indexPath}${csignore}`;
 }
 
 // Process-lifetime cache so repeated search_code calls don't re-read and
