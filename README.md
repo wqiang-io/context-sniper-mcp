@@ -214,22 +214,36 @@ Measured on 2026-09-19; tokens are estimated as characters ÷ 4. "Before" is the
 previous `search_code`, which returned whole chunks; "after" is the current
 default (`topK` 5, `maxChars` 6000). "Plain `Read`" is the control: the file
 that answers the query, opened whole with Claude Code's `Read` tool, counted in
-its `cat -n` output format (6-wide line number, tab, line).
+its `cat -n` output format (6-wide line number, tab, line). "Grep" is the
+second control: Claude Code's `Grep` tool (ripgrep) run from the repo root
+with the query's words joined by `|`, case-insensitive, no context lines,
+`file:line:content` output, `.gitignore` honoured (`rg -n -i 'a|b|c'`).
 
-| Query | Corpus | Before | After | Plain `Read` of the answering file |
-|-------|--------|--------|-------|------------------------------------|
-| `timeout kill process group` | this repo (13 files) | 14,279 chars ≈ 3.6k tokens | 2,907 chars ≈ 0.7k tokens | `src/output-gate.ts`, 140 lines: 5,024 chars ≈ 1.3k tokens |
-| `index`, `topK` 50 | this repo | 53,010 chars ≈ 13k tokens | 5,992 chars ≈ 1.5k tokens (budget cap) | `src/repo-index.ts`, 360 lines: 13,537 chars ≈ 3.4k tokens |
-| `__table_name__` | a React + FastAPI project (69 files) | 8,697 chars | 914 chars | `backend/app/models/db_models.py`, 13 lines: 539 chars |
-| `zustand persist sidebar` | same project | 14,637 chars | 2,912 chars | `frontend/src/stores/useUIStore.ts`, 35 lines: 975 chars |
+| Query | Corpus | Before | After | Plain `Read` of the answering file | Grep |
+|-------|--------|--------|-------|------------------------------------|------|
+| `timeout kill process group` | this repo (13 files) | 14,279 chars ≈ 3.6k tokens | 2,907 chars ≈ 0.7k tokens | `src/output-gate.ts`, 140 lines: 5,024 chars ≈ 1.3k tokens | 66 lines in 10 files: 4,964 chars ≈ 1.2k tokens |
+| `index`, `topK` 50 | this repo | 53,010 chars ≈ 13k tokens | 5,992 chars ≈ 1.5k tokens (budget cap) | `src/repo-index.ts`, 360 lines: 13,537 chars ≈ 3.4k tokens | 279 lines in 18 files: 22,795 chars ≈ 5.7k tokens |
+| `__table_name__` | a React + FastAPI project (69 files) | 8,697 chars | 914 chars | `backend/app/models/db_models.py`, 13 lines: 539 chars | 3 lines in 2 files: 361 chars |
+| `zustand persist sidebar` | same project | 14,637 chars | 2,912 chars | `frontend/src/stores/useUIStore.ts`, 35 lines: 975 chars | 12 lines in 4 files: 1,671 chars |
 
 The `Read` column assumes you already know which file to open; on the two
 small project files it is cheaper than the search reply once you do. Finding
 the file is what the search reply pays for, and it also carries the related
 hits: both project queries pull in `REVIEW.md`, which is 319 lines and 23,261
-chars (≈ 5.8k tokens) to `Read` whole. For scale, `grep -rn SIGKILL src/` is
-207 chars. A search reply never exceeds `maxChars`; whatever was cut can be
-fetched with the `read_snippet` call named in the marker.
+chars (≈ 5.8k tokens) to `Read` whole.
+
+The Grep column is the honest competitor, and it wins two of the four rows.
+An exact identifier (`__table_name__`) or a rare word (`zustand`) is a
+grep problem: the reply is a few hundred characters and every line is
+relevant, though 3 of the 12 `zustand` lines are `pnpm-lock.yaml` entries that
+the index skips. Common words go the other way: `index` matches 279 lines
+across tests, docs and `package-lock.json`, and a query made of ordinary words
+(`timeout kill process group`) returns 66 scattered lines with no ranking and
+no context, against 2,907 chars of ranked, contiguous code. If you already
+know a distinctive token (`grep -rn SIGKILL src/` is 207 chars), grep for it.
+`search_code` is for the case where you know the concept but not the name. A
+search reply never exceeds `maxChars`; whatever was cut can be fetched with
+the `read_snippet` call named in the marker.
 
 ## Design notes
 

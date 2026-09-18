@@ -182,20 +182,32 @@ context-sniper-mcp --version
 2026-09-19 实测；token 按字符数 ÷ 4 粗估。"旧版"指此前整块返回的
 `search_code`，"新版"为当前默认参数（`topK` 5，`maxChars` 6000）。"普通 `Read`"
 是对照组：用 Claude Code 的 `Read` 工具整个打开能回答该查询的文件，按其
-`cat -n` 输出格式计数（6 位宽行号、制表符、行内容）。
+`cat -n` 输出格式计数（6 位宽行号、制表符、行内容）。"Grep"是第二个对照组：
+Claude Code 的 `Grep` 工具（ripgrep）在仓库根目录运行，查询词用 `|` 连接，忽略
+大小写，不带上下文行，输出 `文件:行号:内容`，遵守 `.gitignore`
+（`rg -n -i 'a|b|c'`）。
 
-| 查询 | 语料 | 旧版 | 新版 | 普通 `Read` 整个答案文件 |
-|------|------|------|------|--------------------------|
-| `timeout kill process group` | 本仓库（13 文件） | 14,279 字符 ≈ 3.6k token | 2,907 字符 ≈ 0.7k token | `src/output-gate.ts`，140 行：5,024 字符 ≈ 1.3k token |
-| `index`，`topK` 50 | 本仓库 | 53,010 字符 ≈ 13k token | 5,992 字符 ≈ 1.5k token（预算封顶） | `src/repo-index.ts`，360 行：13,537 字符 ≈ 3.4k token |
-| `__table_name__` | 一个 React + FastAPI 项目（69 文件） | 8,697 字符 | 914 字符 | `backend/app/models/db_models.py`，13 行：539 字符 |
-| `zustand persist sidebar` | 同上 | 14,637 字符 | 2,912 字符 | `frontend/src/stores/useUIStore.ts`，35 行：975 字符 |
+| 查询 | 语料 | 旧版 | 新版 | 普通 `Read` 整个答案文件 | Grep |
+|------|------|------|------|--------------------------|------|
+| `timeout kill process group` | 本仓库（13 文件） | 14,279 字符 ≈ 3.6k token | 2,907 字符 ≈ 0.7k token | `src/output-gate.ts`，140 行：5,024 字符 ≈ 1.3k token | 10 个文件 66 行：4,964 字符 ≈ 1.2k token |
+| `index`，`topK` 50 | 本仓库 | 53,010 字符 ≈ 13k token | 5,992 字符 ≈ 1.5k token（预算封顶） | `src/repo-index.ts`，360 行：13,537 字符 ≈ 3.4k token | 18 个文件 279 行：22,795 字符 ≈ 5.7k token |
+| `__table_name__` | 一个 React + FastAPI 项目（69 文件） | 8,697 字符 | 914 字符 | `backend/app/models/db_models.py`，13 行：539 字符 | 2 个文件 3 行：361 字符 |
+| `zustand persist sidebar` | 同上 | 14,637 字符 | 2,912 字符 | `frontend/src/stores/useUIStore.ts`，35 行：975 字符 | 4 个文件 12 行：1,671 字符 |
 
 `Read` 这一列的前提是你已经知道该打开哪个文件；对那两个很小的项目文件，知道文件后
 直接 `Read` 比搜索回复更省。搜索回复多花的部分买的是"找到文件"，同时也带上了相关
 命中：两个项目查询都会命中 `REVIEW.md`，它有 319 行，整个 `Read` 要 23,261 字符
-（≈ 5.8k token）。作为参照，`grep -rn SIGKILL src/` 是 207 字符。一次搜索回复
-不会超过 `maxChars`，被裁掉的部分都能用标记里给出的 `read_snippet` 参数取回。
+（≈ 5.8k token）。
+
+Grep 这一列才是真正的对手，四行里它赢了两行。精确标识符（`__table_name__`）或
+生僻词（`zustand`）是 grep 的地盘：回复只有几百字符，每一行都有用，不过 `zustand`
+的 12 行里有 3 行是索引会跳过的 `pnpm-lock.yaml` 条目。常见词则反过来：`index`
+在测试、文档和 `package-lock.json` 里命中 279 行；由普通词组成的查询
+（`timeout kill process group`）返回 66 行零散结果，没有排序也没有上下文，而搜索
+回复是 2,907 字符经过排序的连续代码。如果你已经知道一个有区分度的 token
+（`grep -rn SIGKILL src/` 是 207 字符），直接 grep。`search_code` 针对的是知道
+概念、不知道名字的情形。一次搜索回复不会超过 `maxChars`，被裁掉的部分都能用
+标记里给出的 `read_snippet` 参数取回。
 
 ## 设计说明
 
