@@ -138,26 +138,30 @@ context-sniper-mcp --version
 
 ## 推荐用法
 
-1. 每个仓库先调用一次 **index_repo**（大改后再调一次），再做别的。
-2. 修 bug 之前优先 **search_code** 而不是打开文件——先搜症状、错误信息或函数名。
-3. 不要一上来读整个文件。让 `search_code` 的证据包告诉你该看哪里。
-4. 测试失败时用 **run_test_filtered** 拿裁剪过的失败输出，而不是把原始测试日志
-   灌进上下文。
-5. 命中末尾带省略标记时照着做：标记里写明了 **read_snippet** 的精确参数
+1. 每个仓库调用一次 **index_repo**，大改或修改 `.csignore` 之后再调一次。
+2. 已知标识符、报错字符串或文件时，照常用 `Grep`（短文件直接 `Read`）。在
+   "Token 效率"的实测里，有针对性的 `Grep` 比 **search_code** 省 2.5 到 10 倍。
+3. 查询宽到 `Grep` 会在很多文件里命中、淹没上下文时，再用 **search_code**：它的
+   回复不会超过 `maxChars`。它是关键词检索，要用代码里实际出现的词来查，不要
+   用自然语言提问。
+4. 命中末尾带省略标记时照着做：标记里写明了 **read_snippet** 的精确参数
    （`<path> <start> <end>`，每次仍以 300 行为限），不必读整个文件。只有尾注
    列出的多条被省略命中你确实需要时，才调高 `maxChars`。
+5. 测试失败时用 **run_test_filtered** 拿裁剪过的失败输出，而不是把原始测试日志
+   灌进上下文。
 
 ## 在 CLAUDE.md / AGENTS.md 中使用
 
-把下面这段粘到项目的 `CLAUDE.md` 或 `AGENTS.md`，让 Agent 先想到 Context Sniper
-再想到 `Read`。这段内容每一轮都会被加载，所以尽量短；其余细节由服务器自带的
+把下面这段粘到项目的 `CLAUDE.md` 或 `AGENTS.md`，让 Agent 知道什么时候该用
+Context Sniper，什么时候 `Grep` 更省。这段内容每一轮都会被加载，所以尽量短；其余细节由服务器自带的
 工具描述承担。
 
 ```markdown
 ## Context Sniper
 
-本仓库已接入 `context-sniper` MCP 服务器。打开文件之前先用它定位代码：一次
-`search_code` 回复不超过 6000 字符（约 1.5k token），只返回命中行及上下各 2 行。
+本仓库已接入 `context-sniper` MCP 服务器。它的 `search_code` 是带上限的关键词
+检索：一次回复不超过 6000 字符（约 1.5k token），只含命中行及上下各 2 行。查已知
+标识符时它并不比 `Grep` 省，宽泛的查询才用它。
 
 工具（`root` 一律传本仓库的绝对路径）：
 - `index_repo(root)` —— `.context-index/` 不存在时运行；`git pull`、大改或修改
@@ -172,9 +176,9 @@ context-sniper-mcp --version
   返回和失败相关的行。
 
 工作流：
-1. 用 `search_code` 定位，照着标记用 `read_snippet` 扩展。
-2. 只有准备编辑某个文件或文件很短时才整读它。精确字符串、正则和上次索引之后
-   新增的文件仍然用 `Grep`。
+1. 已知标识符、报错字符串或文件：照常用 `Grep` / `Read`。
+2. `Grep` 会在很多文件里命中的宽泛查询：用 `search_code`，再照着标记用
+   `read_snippet` 扩展。
 3. 改完用 `run_test_filtered` 验证，不要直接跑原始测试命令。
 ```
 
@@ -214,7 +218,7 @@ context-sniper-mcp --version
   它，这部分就是噪音。
 
 表里还有两项成本没算。一是四个工具的定义在 `tools/list` 里有 3,547 字符的
-JSON，上面的 CLAUDE.md 片段另有 1,557 字符，合计约 1.3k token，只要会话加载了
+JSON，英文 README 里的 CLAUDE.md 片段另有 1,585 字符，合计约 1.3k token，只要会话加载了
 它们就要付，不管有没有搜索（会把 MCP 工具 schema 延迟到首次使用再加载的客户端，
 一开始只付片段那部分）。二是 Claude Code 的 `Edit` 要求先 `Read` 文件，所以
 凡是以修改代码结束的任务，搜索回复是在那次读取之外额外付的，而不是替代它。

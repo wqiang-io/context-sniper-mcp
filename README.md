@@ -161,32 +161,36 @@ binary with no arguments still starts the MCP stdio server.
 
 ## Recommended usage
 
-1. Call **index_repo** once per repo (and again after large changes) before
-   doing anything else.
-2. Before fixing a bug, prefer **search_code** over opening files — search
-   for the symptom, error message, or function name first.
-3. Don't read a whole file up front. Let the evidence packet from
-   `search_code` tell you where to look.
-4. If a test fails, use **run_test_filtered** to get the trimmed
-   failure output instead of piping raw test-runner logs into context.
-5. If a hit ends with an omission marker, follow it: the marker spells out
+1. Call **index_repo** once per repo, and again after large changes or an
+   edit to `.csignore`.
+2. When you know an identifier, an error string or the file, use `Grep` (or
+   `Read` a short file) as usual. In the measurements under "Token
+   efficiency" a targeted `Grep` was 2.5× to 10× cheaper than **search_code**.
+3. Use **search_code** when the query is broad enough that `Grep` would match
+   across many files and flood the context: its reply never exceeds
+   `maxChars`. It is keyword search, so query with words as they appear in the
+   code, not with a natural-language question.
+4. If a hit ends with an omission marker, follow it: the marker spells out
    the exact **read_snippet** call (`<path> <start> <end>`, still capped at
    300 lines per call) rather than reading the entire file. Raise `maxChars`
    only when the trailer lists several omitted hits you actually need.
+5. If a test fails, use **run_test_filtered** to get the trimmed
+   failure output instead of piping raw test-runner logs into context.
 
 ## Using it from CLAUDE.md / AGENTS.md
 
-Paste this into the project's `CLAUDE.md` or `AGENTS.md` so the agent reaches
-for Context Sniper before it reaches for `Read`. Every line here is loaded on
+Paste this into the project's `CLAUDE.md` or `AGENTS.md` so the agent knows
+when Context Sniper helps and when `Grep` is cheaper. Every line here is loaded on
 every turn, so it is kept short; the tool descriptions the server ships carry
 the rest.
 
 ```markdown
 ## Context Sniper
 
-This repo is served by the `context-sniper` MCP server. Use it to locate code
-before opening files: one `search_code` reply is capped at 6000 chars (about
-1.5k tokens) and returns only the matching lines plus 2 lines of context.
+This repo is served by the `context-sniper` MCP server. Its `search_code` is a
+capped keyword search: one reply never exceeds 6000 chars (about 1.5k tokens)
+and holds only matching lines plus 2 lines of context. It is not cheaper than
+`Grep` for a known identifier; use it for broad queries.
 
 Tools (`root` is always this repo's absolute path):
 - `index_repo(root)` — run it if `.context-index/` is missing, and again after
@@ -204,9 +208,9 @@ Tools (`root` is always this repo's absolute path):
   returns only the failure-relevant lines.
 
 Workflow:
-1. Locate with `search_code`; expand with `read_snippet` by following the markers.
-2. Read a whole file only when you are about to edit it or it is short. `Grep`
-   is still right for exact strings, regexes, and files added since the last index.
+1. Known identifier, error string or file: use `Grep` / `Read` as usual.
+2. Broad query that `Grep` would match across many files: use `search_code`,
+   then expand with `read_snippet` by following the markers.
 3. After editing, verify with `run_test_filtered` instead of the raw test runner.
 ```
 
@@ -253,7 +257,7 @@ All figures are characters. What this shows:
 
 Two costs the table leaves out. First, the server's four tool definitions
 are 3,547 chars of `tools/list` JSON, and the CLAUDE.md snippet above is
-another 1,557; together about 1.3k tokens for every session that loads them,
+another 1,585; together about 1.3k tokens for every session that loads them,
 whether or not a search runs (clients that defer MCP tool schemas until first
 use pay only the snippet up front). Second, Claude Code's `Edit` requires a
 `Read` of the file first, so on any task that ends in an edit, the search
