@@ -239,10 +239,11 @@ nearly all under 100 lines).
 | `__table_name__` | `backend/app/models/db_models.py`, 13 lines | 915 | 1,070 | 593 | 538 |
 | `zustand persist sidebar` | `frontend/src/stores/useUIStore.ts`, 35 lines | 2,914 | 297 (`persist\(`) | 1,021 | 974 |
 | `SessionLocal get_db` | `backend/app/db/database.py`, 19 lines | 709 | 272 (`def get_db`) | 634 | 594 |
+| `index` (broad) | none: the word is all over this repo | 5,980 | 58,575 (279 lines in 18 files) | — | — |
 
 All figures are characters. What this shows:
 
-- `search_code` was never the cheapest way to the answer. Its best row is
+- `search_code` was never the cheapest way to an answer in rows 1–5. Its best row is
   `__table_name__`, where it undercuts `Grep` -C 2 by 155 chars but costs more
   than `Grep` files + `Read` of the 13-line file. A targeted `Grep` beat it
   three times, by 2.5× to 10×.
@@ -252,6 +253,9 @@ All figures are characters. What this shows:
   row 2 it returned `src/ignore.ts`, `README.md`, `src/search.ts` and
   `test/output-gate.test.mjs`, filled the budget, and never reached the answer. `Grep` only found it
   because the pattern guessed the word `escape`.
+- A broad word is where the cap pays off: `index` matches 279 lines across
+  code, tests, docs and lockfiles, and `Grep` with context returns ten times
+  what the capped `search_code` reply does.
 - Extra hits cost tokens: all three project queries also return `REVIEW.md`.
   If you did not need that file, those chars are noise.
 

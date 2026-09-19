@@ -203,10 +203,11 @@ Context Sniper，什么时候 `Grep` 更省。这段内容每一轮都会被加�
 | `__table_name__` | `backend/app/models/db_models.py`，13 行 | 915 | 1,070 | 593 | 538 |
 | `zustand persist sidebar` | `frontend/src/stores/useUIStore.ts`，35 行 | 2,914 | 297（`persist\(`） | 1,021 | 974 |
 | `SessionLocal get_db` | `backend/app/db/database.py`，19 行 | 709 | 272（`def get_db`） | 634 | 594 |
+| `index`（宽泛） | 无：这个词遍布本仓库 | 5,980 | 58,575（18 个文件里 279 行） | — | — |
 
 单位均为字符。结论：
 
-- `search_code` 一次都不是拿到答案的最省方式。它表现最好的是
+- 在第 1 到 5 行里，`search_code` 一次都不是拿到答案的最省方式。它表现最好的是
   `__table_name__` 这一行：比 `Grep` -C 2 少 155 字符，但仍比 `Grep` 文件列表
   + `Read` 那个 13 行的文件更费。有针对性的 `Grep` 三次胜出，差距 2.5 到 10 倍。
 - 它比整个读大文件省（第 1、2 行），但带上下文的 `Grep` 同样做得到，而这本来
@@ -214,6 +215,8 @@ Context Sniper，什么时候 `Grep` 更省。这段内容每一轮都会被加�
 - 它是关键词检索，不是语义检索：第 2 行的自然语言问题，它返回了 `src/ignore.ts`、
   `README.md`、`src/search.ts`、`test/output-gate.test.mjs`，用完了整个预算，
   答案文件根本没出现。`Grep` 能找到，也只是因为模式里猜中了 `escape` 这个词。
+- 宽泛的词才是上限起作用的地方：`index` 在代码、测试、文档和 lockfile 里命中
+  279 行，带上下文的 `Grep` 返回的内容是有上限的 `search_code` 回复的十倍。
 - 多余的命中也要花 token：三个项目查询都会带出 `REVIEW.md`，如果你并不需要
   它，这部分就是噪音。
 
