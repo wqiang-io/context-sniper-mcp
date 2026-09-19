@@ -4,7 +4,8 @@
 
 一个轻量的本地 MCP 服务器：把仓库索引成按行范围切分的块，检索时只返回紧凑的
 "证据包"（文件 + 行号 + 分数 + 片段），而不是把整个文件塞进模型上下文。
-供 Claude Code 和 Codex 共用，用来在探索或调试代码库时省 token。
+供 Claude Code 和 Codex 在探索或调试代码库时共用。它是带硬性输出上限的关键词
+检索，不保证省 token：和 `Grep` 相比常常更费，见下文"Token 效率"。
 
 没有数据库——索引就是一个 JSON 文件，写在 `<repo>/.context-index/chunks.json`。
 
@@ -179,35 +180,49 @@ context-sniper-mcp --version
 
 ## Token 效率
 
-2026-09-19 实测；token 按字符数 ÷ 4 粗估。"旧版"指此前整块返回的
-`search_code`，"新版"为当前默认参数（`topK` 5，`maxChars` 6000）。"普通 `Read`"
-是对照组：用 Claude Code 的 `Read` 工具整个打开能回答该查询的文件，按其
-`cat -n` 输出格式计数（6 位宽行号、制表符、行内容）。"Grep"是第二个对照组：
-Claude Code 的 `Grep` 工具（ripgrep）在仓库根目录运行，查询词用 `|` 连接，忽略
-大小写，不带上下文行，输出 `文件:行号:内容`，遵守 `.gitignore`
-（`rg -n -i 'a|b|c'`）。
+2026-09-19 实测；token 按字符数 ÷ 4 粗估。每一行是同一个问题的四种回答方式：
 
-| 查询 | 语料 | 旧版 | 新版 | 普通 `Read` 整个答案文件 | Grep |
-|------|------|------|------|--------------------------|------|
-| `timeout kill process group` | 本仓库（13 文件） | 14,279 字符 ≈ 3.6k token | 2,907 字符 ≈ 0.7k token | `src/output-gate.ts`，140 行：5,024 字符 ≈ 1.3k token | 10 个文件 66 行：4,964 字符 ≈ 1.2k token |
-| `index`，`topK` 50 | 本仓库 | 53,010 字符 ≈ 13k token | 5,992 字符 ≈ 1.5k token（预算封顶） | `src/repo-index.ts`，360 行：13,537 字符 ≈ 3.4k token | 18 个文件 279 行：22,795 字符 ≈ 5.7k token |
-| `__table_name__` | 一个 React + FastAPI 项目（69 文件） | 8,697 字符 | 914 字符 | `backend/app/models/db_models.py`，13 行：539 字符 | 2 个文件 3 行：361 字符 |
-| `zustand persist sidebar` | 同上 | 14,637 字符 | 2,912 字符 | `frontend/src/stores/useUIStore.ts`，35 行：975 字符 | 4 个文件 12 行：1,671 字符 |
+- **`search_code`** —— 当前默认参数（`topK` 5，`maxChars` 6000）。
+- **`Grep` -n -C 2** —— Claude Code 的 `Grep` 内容模式，带行号和上下各 2 行，
+  用 agent 最可能先试的那个模式（写在单元格里）。
+- **`Grep` 文件列表 + `Read`** —— 先用 `Grep` 列出匹配文件，再整个 `Read`
+  答案文件。
+- **只 `Read`** —— 假设已经知道是哪个文件，直接整个打开。
 
-`Read` 这一列的前提是你已经知道该打开哪个文件；对那两个很小的项目文件，知道文件后
-直接 `Read` 比搜索回复更省。搜索回复多花的部分买的是"找到文件"，同时也带上了相关
-命中：两个项目查询都会命中 `REVIEW.md`，它有 319 行，整个 `Read` 要 23,261 字符
-（≈ 5.8k token）。
+`Read` 的输出按其 `cat -n` 格式计数（6 位宽行号、制表符、行内容）。语料：
+本仓库（21 个文件），以及一个 React + FastAPI 项目（83 个文件，几乎都不到 100 行）。
 
-Grep 这一列才是真正的对手，四行里它赢了两行。精确标识符（`__table_name__`）或
-生僻词（`zustand`）是 grep 的地盘：回复只有几百字符，每一行都有用，不过 `zustand`
-的 12 行里有 3 行是索引会跳过的 `pnpm-lock.yaml` 条目。常见词则反过来：`index`
-在测试、文档和 `package-lock.json` 里命中 279 行；由普通词组成的查询
-（`timeout kill process group`）返回 66 行零散结果，没有排序也没有上下文，而搜索
-回复是 2,907 字符经过排序的连续代码。如果你已经知道一个有区分度的 token
-（`grep -rn SIGKILL src/` 是 207 字符），直接 grep。`search_code` 针对的是知道
-概念、不知道名字的情形。一次搜索回复不会超过 `maxChars`，被裁掉的部分都能用
-标记里给出的 `read_snippet` 参数取回。
+| 问题 | 答案文件 | `search_code` | `Grep` -n -C 2 | `Grep` 文件列表 + `Read` | 只 `Read` |
+|------|----------|---------------|----------------|--------------------------|-----------|
+| `timeout kill process group` | `src/output-gate.ts`，140 行 | 3,186 | 1,236（`SIGKILL`） | 5,081 | 5,023 |
+| `where is the path traversal check` | `src/repo-index.ts`，360 行 | 5,996，**回复里没有答案** | 7,458（`traversal\|escape`，9 个文件） | 13,699 | 13,536 |
+| `__table_name__` | `backend/app/models/db_models.py`，13 行 | 915 | 1,070 | 593 | 538 |
+| `zustand persist sidebar` | `frontend/src/stores/useUIStore.ts`，35 行 | 2,914 | 297（`persist\(`） | 1,021 | 974 |
+| `SessionLocal get_db` | `backend/app/db/database.py`，19 行 | 709 | 272（`def get_db`） | 634 | 594 |
+
+单位均为字符。结论：
+
+- `search_code` 一次都不是拿到答案的最省方式。它表现最好的是
+  `__table_name__` 这一行：比 `Grep` -C 2 少 155 字符，但仍比 `Grep` 文件列表
+  + `Read` 那个 13 行的文件更费。有针对性的 `Grep` 三次胜出，差距 2.5 到 10 倍。
+- 它比整个读大文件省（第 1、2 行），但带上下文的 `Grep` 同样做得到，而这本来
+  就是没有这个服务器时 agent 的做法。
+- 它是关键词检索，不是语义检索：第 2 行的自然语言问题，它返回了 `src/ignore.ts`、
+  `README.md`、`src/search.ts`、`test/output-gate.test.mjs`，用完了整个预算，
+  答案文件根本没出现。`Grep` 能找到，也只是因为模式里猜中了 `escape` 这个词。
+- 多余的命中也要花 token：三个项目查询都会带出 `REVIEW.md`，如果你并不需要
+  它，这部分就是噪音。
+
+表里还有两项成本没算。一是四个工具的定义在 `tools/list` 里有 3,547 字符的
+JSON，上面的 CLAUDE.md 片段另有 1,557 字符，合计约 1.3k token，只要会话加载了
+它们就要付，不管有没有搜索（会把 MCP 工具 schema 延迟到首次使用再加载的客户端，
+一开始只付片段那部分）。二是 Claude Code 的 `Edit` 要求先 `Read` 文件，所以
+凡是以修改代码结束的任务，搜索回复是在那次读取之外额外付的，而不是替代它。
+
+这个服务器真正提供的是上限：不管查询多宽，一次回复都不会超过 `maxChars`；
+而宽松的 `Grep` 模式或整个 `Read` 一个大文件都没有这个上限。被裁掉的部分都能用
+标记里给出的 `read_snippet` 参数取回。已知标识符或报错字符串时用 `Grep`；
+查询宽到不加上限的 `Grep` 会淹没上下文时，再用 `search_code`。
 
 ## 设计说明
 
